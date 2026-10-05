@@ -17,11 +17,38 @@ Ordered by priority for the coach KG spike (see also coach-kg `BLOCKERS.md` / `d
 
 | # | Patch | Why | Notes |
 |---|--------|-----|--------|
-| 1 | **ORDER BY alpha / lexical sort** | SPARQL `ORDER BY ?var` / `ORDER BY STR(?)` returns dictionary/insertion order in 0.136.0; `DESC` only reverses it. Unusable for UI lists (classes, labels). | First patch to implement. Repro in coach-kg `docs/SPIKE.md`. Sort in SQL (`ORDER BY result->>'…'`) is a temporary workaround only. |
+| 1 | **ORDER BY alpha / lexical sort** | SPARQL `ORDER BY ?var` / `ORDER BY STR(?)` returns dictionary/insertion order in 0.136.0; `DESC` only reverses it. Unusable for UI lists (classes, labels). | **Implemented** on branch `orderby-lexical` (FORK-ORDERBY-01, see below). Repro in coach-kg `docs/SPIKE.md`. |
 | 2 | **Cross-graph SHACL** | `validate(graph)` is graph-local. Enum / class individuals typed only in the ontology graph cannot satisfy `sh:class` in a tenant graph. | Today we work around with `sh:nodeKind` + `sh:in` for enums. Want: optional import/union graphs or class lookup across configured graphs. |
 | 3 | **`load_shacl(graph IRI)`** | In 0.136.0 `load_shacl` takes Turtle **text**, not a graph IRI (some docs imply IRI). We dual-load shapes into a named graph *and* the catalog. | Want: `load_shacl` from an already-loaded named graph IRI so SPARQL and the catalog stay single-source. |
 | 4 | **File LOAD allowlist UX** | `*_file` loaders need `pg_ripple.copy_rdf_allowed_paths` **and** paths under PGDATA. Mounted `/kg/…` fails even with allowlist. GUC is `Sighup` (docs sometimes say `Suset`). | Want: clearer errors, documented allowlist+PGDATA contract, and/or safe load-from-bind-mount for local/dev. Coach-kg currently loads via client-side `cat` → `load_turtle_into_graph(text, …)`. |
 | 5 | **Write-time SHACL `minCount`** | Offline `validate()` checks `sh:minCount`; sync `insert_triple()` cannot see absence on a single insert. | Want: write-time / deferred checks that enforce required cardinality (batch flush, txn-end validate, or async mode with clear semantics). |
+
+## FORK-ORDERBY-01: lexical / value ORDER BY
+
+**Root cause (0.136.0):** `translate_order_by` emitted `ORDER BY <column>` where the column is the
+BIGINT dictionary ID. Dictionary IDs are IDENTITY values, so IRIs and strings came back in load
+order and `DESC` merely reversed it. Only inline-encoded integers/dates happened to sort correctly
+(their bit packing is order-preserving). Non-variable ORDER BY expressions (`STR(?l)`, `LCASE(?l)`,
+`?v * 2`) were silently dropped.
+
+**Fix** (`src/sparql/translate/filter/filter_dispatch.rs`, `sqlgen.rs`, `translate/distinct.rs`):
+each ORDER BY condition becomes a composite key following SPARQL 1.1 §15.1:
+
+1. term category: blank node < IRI < numeric < boolean < date/dateTime < other literals < quoted triples;
+2. numeric value (inline xsd:integer + dictionary decimal/double/float/derived integer types);
+3. chronological value (inline UTC dateTime/date + dictionary dateTime with offsets);
+4. lexical form / IRI string in codepoint order (`COLLATE "C"`, i.e. `fn:compare` codepoint
+   collation: upper-case sorts before lower-case — use `ORDER BY LCASE(?l)` for case-insensitive lists);
+5. dictionary ID as the deterministic tie-breaker.
+
+Also: `STR()`, `LCASE()`, `UCASE()` ORDER BY expressions are supported directly; other expressions
+(arithmetic, `CONCAT`, BIND variables) are evaluated once in a fenced (`OFFSET 0`) inner query, and
+terms minted during the statement fall back to the SPI decoders (`decode_id`, `decode_numeric_spi`)
+because they are invisible to the statement snapshot. Raw aggregate outputs (`COUNT`, `SUM`,
+`GROUP_CONCAT`) are ordered by their SQL value. `SELECT DISTINCT … ORDER BY` is ordered in an outer
+query. Unbound values keep the previous placement (last for ASC, first for DESC).
+
+Regression test: `tests/pg_regress/sql/sparql_order_by_lexical.sql`.
 
 ## How we build the image
 
@@ -82,3 +109,20 @@ sudo docker push ghcr.io/giovannidegani/pg-ripple:dev
 ```
 
 Early build attempts failed on transient `deb.debian.org` HTTP 500 inside the build container; retry after host/`docker run … apt-get update` succeeded.
+
+### orderby-lexical image (box, 2026-10-05 CEST)
+
+The full `docker build` was **not** re-run for this branch: `COPY src/` comes before the pg_trickle and pg_tide
+builds in the Dockerfile, so any src change rebuilds everything (~25 min). What was done instead:
+
+- Built `pg_ripple.so` incrementally in a dev container made from the Dockerfile's cached builder layers
+  (`rust:1-bookworm` + PG18 dev headers + `cargo-pgrx` 0.18.0), then ran `cargo pgrx package --features pg18`.
+- Fast overlay image: `oa-pg-ripple:orderby-lexical` = `oa-pg-ripple:dev` plus the new `pg_ripple.so`.
+  Extension SQL is unchanged at 0.136.0, so only the library is replaced.
+
+Full rebuild when wanted:
+
+```bash
+cd /workspace/pg-ripple && git checkout orderby-lexical
+sudo docker build -t oa-pg-ripple:dev -t ghcr.io/giovannidegani/pg-ripple:dev . 2>&1 | tee /workspace/pg-ripple-build.log
+```

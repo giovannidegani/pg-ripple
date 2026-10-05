@@ -61,7 +61,7 @@ use super::sqlgen::Ctx;
 /// For simplicity we use a CASE expression: inline IDs (< 0) go through the
 /// extension's decode function; positive IDs use a correlated subquery that
 /// avoids a function call overhead.
-pub(super) fn decode_lexical_sql(col: &str) -> String {
+pub(crate) fn decode_lexical_sql(col: &str) -> String {
     format!(
         "CASE WHEN {col} < 0 THEN \
               regexp_replace(pg_ripple.decode_id({col}), \

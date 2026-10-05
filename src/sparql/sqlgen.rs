@@ -27,13 +27,13 @@
 use std::collections::HashMap;
 
 use pgrx::prelude::*;
-use spargebra::algebra::{Expression, GraphPattern, OrderExpression};
+use spargebra::algebra::{Expression, GraphPattern};
 use spargebra::term::Literal;
 
 use super::federation;
 use super::property_path::{PathCtx, compile_path};
 use crate::dictionary;
-use crate::sparql::translate::filter::{extract_modifiers, translate_order_by};
+use crate::sparql::translate::filter::{build_ordered_select, extract_modifiers};
 use crate::sparql::translate::{bgp, distinct, filter, graph, group, join, left_join, union};
 
 // ─── VP table resolution ─────────────────────────────────────────────────────
@@ -720,24 +720,11 @@ fn translate_select_mode(
     base_iri: Option<&str>,
     parameterize_values: bool,
 ) -> Translation {
-    let mut mods = extract_modifiers(pattern);
+    let mods = extract_modifiers(pattern);
     let mut ctx = Ctx::new();
     ctx.parameterize_values = parameterize_values;
     ctx.base_iri = base_iri.map(|s| s.to_owned());
     let frag = translate_pattern(mods.pattern, &mut ctx);
-
-    // Resolve ORDER BY now that we have the final bindings.
-    let order_str = if mods.order_exprs.is_empty() {
-        String::new()
-    } else {
-        let s = translate_order_by(&mods.order_exprs, &frag.bindings);
-        if s.is_empty() {
-            String::new()
-        } else {
-            format!("ORDER BY {s}")
-        }
-    };
-    mods.order_by = Some(order_str);
 
     // Determine projected variables.
     let variables: Vec<String> = match &mods.project_vars {
@@ -760,46 +747,8 @@ fn translate_select_mode(
         })
         .collect();
 
-    let distinct_kw = if mods.distinct { "DISTINCT " } else { "" };
     let from = frag.build_from();
     let where_clause = frag.build_where();
-
-    // When SELECT DISTINCT is combined with ORDER BY on a non-projected variable,
-    // PostgreSQL rejects the query ("ORDER BY expressions must appear in select list").
-    // Per SPARQL 1.1 §15, such ordering is implementation-defined.
-    // Drop any ORDER BY expressions that reference non-projected variables so the
-    // query remains valid SQL.
-    let order_clause = if mods.distinct && !mods.order_exprs.is_empty() {
-        let projected: std::collections::HashSet<&str> =
-            variables.iter().map(|v| v.as_str()).collect();
-        let safe_exprs: Vec<_> = mods
-            .order_exprs
-            .iter()
-            .filter(|oe| {
-                let var = match oe {
-                    OrderExpression::Asc(Expression::Variable(v))
-                    | OrderExpression::Desc(Expression::Variable(v)) => Some(v.as_str()),
-                    _ => None,
-                };
-                // Keep the expression only if it refers to a projected variable (or
-                // is not a simple variable reference, e.g. a complex expression).
-                var.is_none_or(|v| projected.contains(v))
-            })
-            .cloned()
-            .collect();
-        if safe_exprs.is_empty() {
-            String::new()
-        } else {
-            let s = translate_order_by(&safe_exprs, &frag.bindings);
-            if s.is_empty() {
-                String::new()
-            } else {
-                format!("ORDER BY {s}")
-            }
-        }
-    } else {
-        mods.order_by.unwrap_or_default()
-    };
     let limit_clause = mods.limit.map(|l| format!("LIMIT {l}")).unwrap_or_default();
     let offset_clause = if mods.offset > 0 {
         format!("OFFSET {}", mods.offset)
@@ -807,27 +756,47 @@ fn translate_select_mode(
         String::new()
     };
 
+    let select_list = if select_cols.is_empty() {
+        "1 AS _dummy".to_owned()
+    } else {
+        select_cols.join(", ")
+    };
+    let out_cols: Vec<String> = if select_cols.is_empty() {
+        vec!["_dummy".to_owned()]
+    } else {
+        variables.iter().map(|v| format!("_v_{v}")).collect()
+    };
+    let var_cols: Vec<(String, String)> = variables
+        .iter()
+        .filter(|v| frag.bindings.contains_key(*v))
+        .map(|v| (v.clone(), format!("_v_{v}")))
+        .collect();
+
+    // FORK-ORDERBY-01: ORDER BY uses lexical / value sort keys rather than raw
+    // dictionary IDs; see `build_ordered_select` for the SQL shapes (including
+    // the outer query used for SELECT DISTINCT + ORDER BY).
+    let (sql, ordered) = build_ordered_select(
+        mods.distinct,
+        &select_list,
+        &out_cols,
+        &var_cols,
+        &format!("FROM {from} {where_clause}"),
+        &mods.order_exprs,
+        &frag.bindings,
+        &mut ctx,
+        &format!("{limit_clause} {offset_clause}"),
+    );
+
     // ── v0.46.0 TopN push-down ────────────────────────────────────────────────
     // When ORDER BY + LIMIT is present (no OFFSET, no DISTINCT) and the GUC is
-    // enabled, the LIMIT clause is already embedded directly in the SQL above.
+    // enabled, the LIMIT clause is emitted directly after the ORDER BY clause.
     // `sparql_explain()` surfaces whether the optimisation was applied via the
-    // `topn_applied` key.  No structural change needed here — the limit_clause
-    // is already emitted after order_clause in the format! below.
-    // The `topn_applied` flag is set in the Translation struct for explain.
+    // `topn_applied` key.
     let topn_applied = crate::TOPN_PUSHDOWN.get()
         && mods.limit.is_some()
         && !mods.distinct
         && mods.offset == 0
-        && !order_clause.is_empty();
-
-    let sql = format!(
-        "SELECT {distinct_kw}{} FROM {from} {where_clause} {order_clause} {limit_clause} {offset_clause}",
-        if select_cols.is_empty() {
-            "1 AS _dummy".to_owned()
-        } else {
-            select_cols.join(", ")
-        }
-    );
+        && ordered;
 
     // v0.62.0: if a cyclic BGP was detected during translation, wrap the SQL
     // with the WCOJ materialized-CTE hint so the planner uses sort-merge joins.

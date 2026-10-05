@@ -16,8 +16,9 @@ pub mod filter_expr;
 // A16-CQ: unused_imports here is intentional for test/cfg-gated code paths.
 #[allow(unused_imports)]
 pub(crate) use filter_dispatch::{
-    Modifiers, encode_ground_term, extract_modifiers, literal_lexical_value, sanitize_sql_ident,
-    translate_order_by, translate_values,
+    Modifiers, OrderKey, OrderKeySource, build_ordered_select, encode_ground_term,
+    extract_modifiers, literal_lexical_value, order_keys, render_order_keys, sanitize_sql_ident,
+    translate_values,
 };
 // A16-CQ: unused_imports here is intentional for test/cfg-gated code paths.
 #[allow(unused_imports)]
