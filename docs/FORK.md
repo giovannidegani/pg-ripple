@@ -109,3 +109,20 @@ sudo docker push ghcr.io/giovannidegani/pg-ripple:dev
 ```
 
 Early build attempts failed on transient `deb.debian.org` HTTP 500 inside the build container; retry after host/`docker run … apt-get update` succeeded.
+
+### orderby-lexical image (box, 2026-10-05 CEST)
+
+The full `docker build` was **not** re-run for this branch: `COPY src/` comes before the pg_trickle and pg_tide
+builds in the Dockerfile, so any src change rebuilds everything (~25 min). What was done instead:
+
+- Built `pg_ripple.so` incrementally in a dev container made from the Dockerfile's cached builder layers
+  (`rust:1-bookworm` + PG18 dev headers + `cargo-pgrx` 0.18.0), then ran `cargo pgrx package --features pg18`.
+- Fast overlay image: `oa-pg-ripple:orderby-lexical` = `oa-pg-ripple:dev` plus the new `pg_ripple.so`.
+  Extension SQL is unchanged at 0.136.0, so only the library is replaced.
+
+Full rebuild when wanted:
+
+```bash
+cd /workspace/pg-ripple && git checkout orderby-lexical
+sudo docker build -t oa-pg-ripple:dev -t ghcr.io/giovannidegani/pg-ripple:dev . 2>&1 | tee /workspace/pg-ripple-build.log
+```
