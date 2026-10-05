@@ -17,7 +17,7 @@ Ordered by priority for the coach KG spike (see also coach-kg `BLOCKERS.md` / `d
 
 | # | Patch | Why | Notes |
 |---|--------|-----|--------|
-| 1 | **ORDER BY alpha / lexical sort** | SPARQL `ORDER BY ?var` / `ORDER BY STR(?)` returns dictionary/insertion order in 0.136.0; `DESC` only reverses it. Unusable for UI lists (classes, labels). | **Implemented** on branch `orderby-lexical` (FORK-ORDERBY-01, see below). Repro in coach-kg `docs/SPIKE.md`. |
+| 1 | **ORDER BY alpha / lexical sort** | SPARQL `ORDER BY ?var` / `ORDER BY STR(?)` returns dictionary/insertion order in 0.136.0; `DESC` only reverses it. Unusable for UI lists (classes, labels). | **Merged to `main`** via PR #1 (`589b6ca5`, FORK-ORDERBY-01). Repro was in coach-kg `docs/SPIKE.md`. |
 | 2 | **Cross-graph SHACL** | `validate(graph)` is graph-local. Enum / class individuals typed only in the ontology graph cannot satisfy `sh:class` in a tenant graph. | Today we work around with `sh:nodeKind` + `sh:in` for enums. Want: optional import/union graphs or class lookup across configured graphs. |
 | 3 | **`load_shacl(graph IRI)`** | In 0.136.0 `load_shacl` takes Turtle **text**, not a graph IRI (some docs imply IRI). We dual-load shapes into a named graph *and* the catalog. | Want: `load_shacl` from an already-loaded named graph IRI so SPARQL and the catalog stay single-source. |
 | 4 | **File LOAD allowlist UX** | `*_file` loaders need `pg_ripple.copy_rdf_allowed_paths` **and** paths under PGDATA. Mounted `/kg/…` fails even with allowlist. GUC is `Sighup` (docs sometimes say `Suset`). | Want: clearer errors, documented allowlist+PGDATA contract, and/or safe load-from-bind-mount for local/dev. Coach-kg currently loads via client-side `cat` → `load_turtle_into_graph(text, …)`. |
@@ -69,7 +69,7 @@ Also: `just docker-build tag=dev` → `docker build -t pg-ripple:dev .`
 
 ## Coach KG compose
 
-`overachiever-coach-kg/docker-compose.yml` keeps the pinned upstream image as the default (spike stays working) and documents an optional override to this fork's local/`ghcr.io/giovannidegani` image via `build:` / `image:` comments.
+`overachiever-coach-kg/docker-compose.yml` defaults to `ghcr.io/giovannidegani/pg-ripple:dev` pinned by digest (fork image with ORDER BY fix). Upstream `0.136.0` remains documented as an alternative.
 
 ## Sync
 
@@ -80,49 +80,28 @@ git merge upstream/main   # or rebase; resolve carefully around our patches
 
 ## Build status (box, 2026-10-05 CEST)
 
-Successful local build (~25 min after apt flake retries):
+**ORDER BY fix on `main`:** merged via PR #1 (`589b6ca5`, FORK-ORDERBY-01).
+
+Full batteries-included rebuild + GHCR push (after disk prune + apt retry):
 
 ```text
-oa-pg-ripple:dev                       sha256:d42de6bf4125…   ~920MB
-ghcr.io/giovannidegani/pg-ripple:dev   (same image id)
+oa-pg-ripple:dev                       sha256:4ef618cf85d2…
+ghcr.io/giovannidegani/pg-ripple:dev   same id
+GHCR digest: sha256:806dbbe29cbb3d7542cf93bb09edf76f42bc76299560f14190174418e97c62f5
 ```
 
-Command used:
-
 ```bash
-cd /workspace/pg-ripple
-sudo docker build -t oa-pg-ripple:dev -t ghcr.io/giovannidegani/pg-ripple:dev .
-# log: /workspace/pg-ripple-build.log
-```
-
-**GHCR push not done:** `docker login ghcr.io` with the current `gh` token succeeded, but `docker push` failed with
-`denied: permission_denied: The token provided does not match expected scopes`
-(token scopes are `gist, read:org, repo, workflow` — need `write:packages` / `read:packages`).
-
-Push when a packages-capable token is available:
-
-```bash
-# PAT with write:packages (and read:packages); do not paste the token into chat
+cd /workspace/pg-ripple   # on main
 echo "$GHCR_TOKEN" | sudo docker login ghcr.io -u giovannidegani --password-stdin
+sudo docker build -t oa-pg-ripple:dev -t ghcr.io/giovannidegani/pg-ripple:dev .
 sudo docker push ghcr.io/giovannidegani/pg-ripple:dev
-# optional: make package public in GitHub → Packages UI
 ```
 
-Early build attempts failed on transient `deb.debian.org` HTTP 500 inside the build container; retry after host/`docker run … apt-get update` succeeded.
+Coach KG compose pins that digest. Verified: ontology class labels
+`ORDER BY ?l LIMIT 6` → Body metric, Coach config, Constraint, Exercise,
+External import, Food item (was load-order on unpatched 0.136.0).
 
-### orderby-lexical image (box, 2026-10-05 CEST)
-
-The full `docker build` was **not** re-run for this branch: `COPY src/` comes before the pg_trickle and pg_tide
-builds in the Dockerfile, so any src change rebuilds everything (~25 min). What was done instead:
-
-- Built `pg_ripple.so` incrementally in a dev container made from the Dockerfile's cached builder layers
-  (`rust:1-bookworm` + PG18 dev headers + `cargo-pgrx` 0.18.0), then ran `cargo pgrx package --features pg18`.
-- Fast overlay image: `oa-pg-ripple:orderby-lexical` = `oa-pg-ripple:dev` plus the new `pg_ripple.so`.
-  Extension SQL is unchanged at 0.136.0, so only the library is replaced.
-
-Full rebuild when wanted:
-
-```bash
-cd /workspace/pg-ripple && git checkout orderby-lexical
-sudo docker build -t oa-pg-ripple:dev -t ghcr.io/giovannidegani/pg-ripple:dev . 2>&1 | tee /workspace/pg-ripple-build.log
-```
+Earlier notes: first `dev` build used image id `d42de6bf…` (pre-ORDERBY);
+an incremental `orderby-lexical` overlay was used for testing before the
+full rebuild. Transient `deb.debian.org` HTTP 500s inside the build
+container may require a retry.
