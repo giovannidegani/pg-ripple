@@ -7,6 +7,50 @@ use spargebra::algebra::{AggregateExpression, AggregateFunction, Expression, Gra
 use crate::sparql::sqlgen::{Ctx, Fragment};
 use crate::sparql::translate::filter::{sanitize_sql_ident, translate_expr, translate_expr_value};
 
+/// FORK-SUM-01: ensure `numeric_type_code_spi` exists before SUM/AVG SQL runs.
+///
+/// Upstream commit after the v0.136.0 tag taught the aggregate translator to call
+/// `pg_ripple.numeric_type_code_spi(bigint)`, but kept `default_version = 0.136.0`
+/// with no upgrade script. Databases created from the released 0.136.0 image (or
+/// any build before that helper landed) therefore lack the SQL function. Swapping
+/// to a newer image that still reports extversion 0.136.0 leaves the catalog
+/// stale and `SUM`/`AVG` fail with "function … does not exist". Fresh
+/// `CREATE EXTENSION` from current sources already installs the helper; this
+/// repair covers the image-swap case without a version bump.
+pub(crate) fn ensure_aggregate_helpers() {
+    let exists = pgrx::Spi::get_one::<bool>(
+        r#"SELECT EXISTS (
+               SELECT 1
+               FROM pg_proc p
+               JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'pg_ripple'
+                 AND p.proname = 'numeric_type_code_spi'
+                 AND pg_catalog.pg_get_function_identity_arguments(p.oid) = 'bigint'
+           )"#,
+    )
+    .ok()
+    .flatten()
+    .unwrap_or(false);
+    if exists {
+        return;
+    }
+    if let Err(e) = pgrx::Spi::run(
+        r#"CREATE FUNCTION pg_ripple.numeric_type_code_spi(id bigint)
+           RETURNS integer
+           STRICT
+           LANGUAGE c
+           AS '$libdir/pg_ripple', 'numeric_type_code_spi_wrapper'"#,
+    ) {
+        pgrx::warning!("pg_ripple: could not install numeric_type_code_spi: {e}");
+        return;
+    }
+    // Attach to the extension so DROP EXTENSION cleans it up. Ignore errors when
+    // the function was created outside an extension membership update.
+    let _ = pgrx::Spi::run(
+        r#"ALTER EXTENSION pg_ripple ADD FUNCTION pg_ripple.numeric_type_code_spi(bigint)"#,
+    );
+}
+
 pub(crate) fn translate_group(
     inner: &GraphPattern,
     group_vars: &[spargebra::term::Variable],
@@ -14,6 +58,7 @@ pub(crate) fn translate_group(
     having: Option<&Expression>,
     ctx: &mut Ctx,
 ) -> Fragment {
+    ensure_aggregate_helpers();
     let inner_frag = crate::sparql::sqlgen::translate_pattern(inner, ctx);
 
     let variable_graph_g: Option<String> = if ctx.variable_graph {

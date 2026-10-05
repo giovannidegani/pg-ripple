@@ -19,6 +19,7 @@ internal = [
   # Dictionary encoding helpers — used by aggregate functions and SPI paths
   "encode_lang_literal",
   "decode_numeric_spi",
+  "numeric_type_code_spi",
   "group_concat_decode",
   "xsd_double_fmt",
 
