@@ -3,7 +3,7 @@
 use spargebra::algebra::GraphPattern;
 
 use crate::sparql::sqlgen::{Ctx, Fragment};
-use crate::sparql::translate::filter::{extract_modifiers, translate_order_by};
+use crate::sparql::translate::filter::{build_ordered_select, extract_modifiers};
 
 /// Translate a Slice node (nested LIMIT/OFFSET subquery).
 pub(crate) fn translate_slice(pattern: &GraphPattern, ctx: &mut Ctx) -> Fragment {
@@ -31,17 +31,20 @@ pub(crate) fn translate_slice(pattern: &GraphPattern, ctx: &mut Ctx) -> Fragment
     } else {
         cols.join(", ")
     };
-
-    let order_clause = if !mods.order_exprs.is_empty() {
-        let os = translate_order_by(&mods.order_exprs, &inner_frag.bindings);
-        if os.is_empty() {
-            String::new()
-        } else {
-            format!("ORDER BY {os}")
-        }
+    let out_cols: Vec<String> = if cols.is_empty() {
+        vec!["_sl_dummy".to_owned()]
     } else {
-        String::new()
+        keep_vars
+            .iter()
+            .filter(|v| inner_frag.bindings.contains_key(*v))
+            .map(|v| format!("_sl_{v}"))
+            .collect()
     };
+    let var_cols: Vec<(String, String)> = keep_vars
+        .iter()
+        .filter(|v| inner_frag.bindings.contains_key(*v))
+        .map(|v| (v.clone(), format!("_sl_{v}")))
+        .collect();
 
     let limit_str = mods.limit.map_or(String::new(), |n| format!("LIMIT {n}"));
     let offset_str = if mods.offset > 0 {
@@ -50,11 +53,24 @@ pub(crate) fn translate_slice(pattern: &GraphPattern, ctx: &mut Ctx) -> Fragment
         String::new()
     };
 
-    let subq = format!(
-        "(SELECT {select_clause} FROM {} {} {order_clause} {limit_str} {offset_str})",
-        inner_frag.build_from(),
-        inner_frag.build_where()
+    // FORK-ORDERBY-01: lexical / value ORDER BY (see `build_ordered_select`).
+    // DISTINCT is not applied here (unchanged behaviour of this translator).
+    let (inner_sql, _ordered) = build_ordered_select(
+        false,
+        &select_clause,
+        &out_cols,
+        &var_cols,
+        &format!(
+            "FROM {} {}",
+            inner_frag.build_from(),
+            inner_frag.build_where()
+        ),
+        &mods.order_exprs,
+        &inner_frag.bindings,
+        ctx,
+        &format!("{limit_str} {offset_str}"),
     );
+    let subq = format!("({inner_sql})");
 
     let alias = ctx.next_alias();
     let mut frag = Fragment::empty();
