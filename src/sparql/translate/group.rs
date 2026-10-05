@@ -18,6 +18,13 @@ use crate::sparql::translate::filter::{sanitize_sql_ident, translate_expr, trans
 /// `CREATE EXTENSION` from current sources already installs the helper; this
 /// repair covers the image-swap case without a version bump.
 pub(crate) fn ensure_aggregate_helpers() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    static OK: AtomicBool = AtomicBool::new(false);
+    if OK.load(Ordering::Relaxed) {
+        return;
+    }
+    // Match by name only — pg_get_function_identity_arguments may return
+    // "bigint" or "id bigint" depending on how the function was created.
     let exists = pgrx::Spi::get_one::<bool>(
         r#"SELECT EXISTS (
                SELECT 1
@@ -25,17 +32,17 @@ pub(crate) fn ensure_aggregate_helpers() {
                JOIN pg_namespace n ON n.oid = p.pronamespace
                WHERE n.nspname = 'pg_ripple'
                  AND p.proname = 'numeric_type_code_spi'
-                 AND pg_catalog.pg_get_function_identity_arguments(p.oid) = 'bigint'
            )"#,
     )
     .ok()
     .flatten()
     .unwrap_or(false);
     if exists {
+        OK.store(true, Ordering::Relaxed);
         return;
     }
     if let Err(e) = pgrx::Spi::run(
-        r#"CREATE FUNCTION pg_ripple.numeric_type_code_spi(id bigint)
+        r#"CREATE OR REPLACE FUNCTION pg_ripple.numeric_type_code_spi(id bigint)
            RETURNS integer
            STRICT
            LANGUAGE c
@@ -44,11 +51,12 @@ pub(crate) fn ensure_aggregate_helpers() {
         pgrx::warning!("pg_ripple: could not install numeric_type_code_spi: {e}");
         return;
     }
-    // Attach to the extension so DROP EXTENSION cleans it up. Ignore errors when
-    // the function was created outside an extension membership update.
+    // Attach to the extension so DROP EXTENSION cleans it up. Ignore "already
+    // a member of extension" errors.
     let _ = pgrx::Spi::run(
         r#"ALTER EXTENSION pg_ripple ADD FUNCTION pg_ripple.numeric_type_code_spi(bigint)"#,
     );
+    OK.store(true, Ordering::Relaxed);
 }
 
 pub(crate) fn translate_group(
