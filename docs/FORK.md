@@ -50,3 +50,35 @@ Also: `just docker-build tag=dev` → `docker build -t pg-ripple:dev .`
 git fetch upstream
 git merge upstream/main   # or rebase; resolve carefully around our patches
 ```
+
+## Build status (box, 2026-10-05 CEST)
+
+Successful local build (~25 min after apt flake retries):
+
+```text
+oa-pg-ripple:dev                       sha256:d42de6bf4125…   ~920MB
+ghcr.io/giovannidegani/pg-ripple:dev   (same image id)
+```
+
+Command used:
+
+```bash
+cd /workspace/pg-ripple
+sudo docker build -t oa-pg-ripple:dev -t ghcr.io/giovannidegani/pg-ripple:dev .
+# log: /workspace/pg-ripple-build.log
+```
+
+**GHCR push not done:** `docker login ghcr.io` with the current `gh` token succeeded, but `docker push` failed with
+`denied: permission_denied: The token provided does not match expected scopes`
+(token scopes are `gist, read:org, repo, workflow` — need `write:packages` / `read:packages`).
+
+Push when a packages-capable token is available:
+
+```bash
+# PAT with write:packages (and read:packages); do not paste the token into chat
+echo "$GHCR_TOKEN" | sudo docker login ghcr.io -u giovannidegani --password-stdin
+sudo docker push ghcr.io/giovannidegani/pg-ripple:dev
+# optional: make package public in GitHub → Packages UI
+```
+
+Early build attempts failed on transient `deb.debian.org` HTTP 500 inside the build container; retry after host/`docker run … apt-get update` succeeded.
