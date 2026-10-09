@@ -143,6 +143,7 @@ fn cache_key(query_text: &str) -> String {
 fn cache_key_inner(canonical: &str) -> String {
     let max_depth = crate::MAX_PATH_DEPTH.get();
     let bgp_reorder = crate::BGP_REORDER.get();
+    let opt_promo = crate::SHACL_OPTIONAL_PROMOTION.get();
     // CACHE-RLS-01: include current role OID so cross-user plan leakage is
     // impossible.  GetUserId() is signal-safe and never fails.
     // SAFETY: GetUserId() is a pure accessor with no side effects; always safe.
@@ -181,7 +182,7 @@ fn cache_key_inner(canonical: &str) -> String {
     let schema_gen = crate::storage::current_schema_generation();
     let digest = xxhash_rust::xxh3::xxh3_128(canonical.as_bytes());
     format!(
-        "{digest:x}\x00max_depth={max_depth}\x00bgp_reorder={bgp_reorder}\x00role={role_oid}\
+        "{digest:x}\x00max_depth={max_depth}\x00bgp_reorder={bgp_reorder}\x00opt_promo={opt_promo}\x00role={role_oid}\
          \x00inference_mode={inference_mode}\x00normalize_iris={normalize_iris}\
          \x00wcoj_enabled={wcoj_enabled}\x00wcoj_min={wcoj_min}\
          \x00topn_pushdown={topn_pushdown}\x00sparql_max_rows={sparql_max_rows}\

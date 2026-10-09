@@ -363,6 +363,10 @@ pub(crate) fn translate_bgp(
 
 /// Check if the right side of OPTIONAL is guaranteed non-empty (sh:minCount >= 1).
 pub(crate) fn shacl_right_is_mandatory(pattern: &GraphPattern) -> bool {
+    // FORK-NESTED-OPT: opt-in only (see pg_ripple.shacl_optional_promotion).
+    if !crate::SHACL_OPTIONAL_PROMOTION.get() {
+        return false;
+    }
     let GraphPattern::Bgp { patterns } = pattern else {
         return false;
     };
