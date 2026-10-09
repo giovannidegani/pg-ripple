@@ -74,6 +74,10 @@ sudo docker build -f docker/Dockerfile.overlay \
   --build-arg BASE=ghcr.io/giovannidegani/pg-ripple:dev@sha256:<previous> -t oa-pg-ripple:dev .
 ```
 
+**Image (2026-10-09):** overlay on `dev@sha256:96326a28…` →
+`ghcr.io/giovannidegani/pg-ripple:dev` and `:shacl-range-01`,
+digest `sha256:002df4644ffe3dd36043b5f8255ddcce6b8984d6d6a340f9b31785da7ea238f4` (main `f3deeaf1`).
+
 ## How we build the image
 
 Upstream publishes via `.github/workflows/release.yml` → `docker/build-push-action` on `Dockerfile` to `ghcr.io/trickle-labs/pg-ripple`. Local equivalent:
