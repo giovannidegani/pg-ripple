@@ -22,6 +22,12 @@ pub static DESCRIBE_FORM: pgrx::GucSetting<Option<std::ffi::CString>> =
 
 // ─── v0.13.0 SPARQL GUCs ─────────────────────────────────────────────────────
 
+/// GUC (FORK-NESTED-OPT): promote OPTIONAL → INNER JOIN when every predicate of the
+/// right side has sh:minCount ≥ 1 in some loaded shape. Off by default: a shape's
+/// minCount only binds that shape's focus nodes (and data need not be valid), so the
+/// promotion silently drops rows whose subject is not a target.
+pub static SHACL_OPTIONAL_PROMOTION: pgrx::GucSetting<bool> = pgrx::GucSetting::<bool>::new(false);
+
 /// GUC: enable BGP join reordering based on pg_stats selectivity estimates.
 pub static BGP_REORDER: pgrx::GucSetting<bool> = pgrx::GucSetting::<bool>::new(true);
 

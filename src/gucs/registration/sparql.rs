@@ -245,6 +245,15 @@ pub fn register() {
     // ── v0.13.0 GUCs ─────────────────────────────────────────────────────────
 
     pgrx::GucRegistry::define_bool_guc(
+        c"pg_ripple.shacl_optional_promotion",
+        c"Promote OPTIONAL to INNER JOIN from sh:minCount hints (unsound unless every subject is a shape target; default: off)",
+        c"",
+        &SHACL_OPTIONAL_PROMOTION,
+        GucContext::Userset,
+        GucFlags::default(),
+    );
+
+    pgrx::GucRegistry::define_bool_guc(
         c"pg_ripple.bgp_reorder",
         c"Reorder BGP triple patterns by estimated selectivity before SQL generation (default: on)",
         c"",
