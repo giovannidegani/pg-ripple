@@ -52,6 +52,20 @@ query. Unbound values keep the previous placement (last for ASC, first for DESC)
 
 Regression test: `tests/pg_regress/sql/sparql_order_by_lexical.sql`.
 
+## FORK-PLAN-CACHE-01: no cached plans with unresolved IRIs
+
+**Symptom (coach-kg open item 4):** the first run of an integration test against a fresh graph failed
+with "routine not found"; reruns passed. **Root cause:** the SPARQL→SQL translator encodes constant
+IRIs once; an IRI that is not in the dictionary yet (a fresh graph, user or predicate) becomes a
+`FALSE` condition. That translation went into the per-backend plan cache keyed by query text, so on
+the same (pooled) connection the identical query kept returning nothing after the IRI was written.
+
+**Fix:** `Ctx.encode_iri` records a miss (`unresolved_iri`), `Translation.cacheable` is false for such a
+translation and `sparql/plan.rs` skips `plan_cache::put_canonical` for it (both SELECT entry points).
+Fully resolved queries are cached exactly as before. Regression test
+`tests/pg_regress/sql/sparql_plan_cache_unresolved.sql`: SELECT on unknown IRIs → 0, INSERT, the
+identical SELECT → 1 (was 0 on the previous image).
+
 ## FORK-SHACL-RANGE-01: numeric range constraints
 
 **Root cause (0.136.0):** `src/shacl/constraints/relational.rs` resolved the bound (`20`,
