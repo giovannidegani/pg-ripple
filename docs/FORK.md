@@ -92,6 +92,23 @@ sudo docker build -f docker/Dockerfile.overlay \
 `ghcr.io/giovannidegani/pg-ripple:dev` and `:shacl-range-01`,
 digest `sha256:002df4644ffe3dd36043b5f8255ddcce6b8984d6d6a340f9b31785da7ea238f4` (main `f3deeaf1`).
 
+## FORK-NESTED-OPT: OPTIONAL → INNER JOIN from SHACL hints is opt-in
+
+**Symptom (coach-kg):** `<s> :l ?x . OPTIONAL { <s> :p ?e . OPTIONAL { ?e rdfs:label ?el } }` returned
+`?e` = null although `<s> :p <e>` exists. It looked like a nested-OPTIONAL bug.
+
+**Root cause:** OPT-INNER-01 (`shacl_right_is_mandatory` in `src/sparql/translate/bgp.rs`) turned an
+OPTIONAL into an INNER JOIN whenever every predicate on its right side has `sh:minCount ≥ 1` in *any*
+loaded shape. A shape's minCount only binds that shape's focus nodes (and stored data need not be
+valid), so the inner `?e rdfs:label ?el` became mandatory for every `?e`, the inner join emptied, and the
+outer OPTIONAL then returned null. Nesting only made it visible.
+
+**Fix:** the promotion only runs when the new GUC `pg_ripple.shacl_optional_promotion` is on (default
+off); the GUC is part of the plan-cache key. Regression: `tests/pg_regress/sql/sparql_optional_shacl_promotion.sql`
+(shape with minCount on rdfs:label targeting another class; nested OPTIONAL keeps the outer binding,
+binds both when present, flat OPTIONAL keeps unlabelled subjects and uses LEFT JOIN; opt-in still
+promotes). `shacl_query_hints` and `shacl_sparql_hints` outputs unchanged.
+
 ## How we build the image
 
 Upstream publishes via `.github/workflows/release.yml` → `docker/build-push-action` on `Dockerfile` to `ghcr.io/trickle-labs/pg-ripple`. Local equivalent:
