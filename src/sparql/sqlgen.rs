@@ -232,6 +232,10 @@ pub(crate) struct Ctx {
     pub(crate) path_counter: u32,
     /// Per-query IRI/literal encoding cache — avoids repeated SPI look-ups.
     per_query: HashMap<String, Option<i64>>,
+    /// FORK-PLAN-CACHE-01: an IRI constant was not in the dictionary, so the generated SQL
+    /// contains a `FALSE` shortcut that is only valid until that IRI is first written. Such a
+    /// translation must not enter the plan cache.
+    pub(crate) unresolved_iri: bool,
     /// Variables that hold raw SQL integers (COUNT, SUM, etc. aggregate outputs).
     /// FILTER constants compared against these must stay as raw SQL values,
     /// not be re-encoded as inline IDs.
@@ -313,6 +317,7 @@ impl Ctx {
             opt_counter: 0,
             path_counter: 0,
             per_query: HashMap::new(),
+            unresolved_iri: false,
             raw_numeric_vars: std::collections::HashSet::new(),
             raw_text_vars: std::collections::HashSet::new(),
             raw_iri_vars: std::collections::HashSet::new(),
@@ -367,6 +372,9 @@ impl Ctx {
             return *cached;
         }
         let id = dictionary::lookup_iri(iri);
+        if id.is_none() {
+            self.unresolved_iri = true;
+        }
         self.per_query.insert(iri.to_owned(), id);
         id
     }
@@ -700,6 +708,8 @@ pub struct Translation {
     pub wcoj_preamble: bool,
     /// Dictionary IDs corresponding to `$n` placeholders in `sql`.
     pub parameters: Vec<i64>,
+    /// FORK-PLAN-CACHE-01: false when the SQL depends on an IRI that did not exist yet.
+    pub cacheable: bool,
 }
 
 /// Translate a SPARQL SELECT query pattern to SQL.
@@ -817,6 +827,7 @@ fn translate_select_mode(
         topn_applied,
         wcoj_preamble,
         parameters: ctx.parameters,
+        cacheable: !ctx.unresolved_iri,
     }
 }
 

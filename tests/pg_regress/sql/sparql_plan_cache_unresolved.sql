@@ -1,0 +1,14 @@
+-- pg_regress test: a cached SPARQL plan must not keep returning nothing after an IRI it
+-- referenced first appears (FORK-PLAN-CACHE-01). The first SELECT runs while the graph and
+-- subject IRIs are unknown (translated to FALSE); the identical SELECT after the insert must see the row.
+CREATE EXTENSION IF NOT EXISTS pg_ripple;
+SELECT count(*) AS before_rows FROM pg_ripple.sparql(
+  'SELECT ?o WHERE { GRAPH <https://plancache.test/g-fresh> { <https://plancache.test/s-fresh> <https://plancache.test/p-fresh> ?o } }');
+SELECT pg_ripple.sparql_update(
+  'INSERT DATA { GRAPH <https://plancache.test/g-fresh> { <https://plancache.test/s-fresh> <https://plancache.test/p-fresh> "hello" } }') >= 0 AS inserted;
+SELECT count(*) AS after_rows FROM pg_ripple.sparql(
+  'SELECT ?o WHERE { GRAPH <https://plancache.test/g-fresh> { <https://plancache.test/s-fresh> <https://plancache.test/p-fresh> ?o } }');
+-- a fully resolved query is still cached (second run is a hit)
+SELECT count(*) AS again_rows FROM pg_ripple.sparql(
+  'SELECT ?o WHERE { GRAPH <https://plancache.test/g-fresh> { <https://plancache.test/s-fresh> <https://plancache.test/p-fresh> ?o } }');
+SELECT pg_ripple.sparql_update('CLEAR GRAPH <https://plancache.test/g-fresh>') >= 0 AS cleared;

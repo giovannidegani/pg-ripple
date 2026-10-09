@@ -66,6 +66,7 @@ pub(crate) fn prepare_select_with_bindings(
         }
         let trans = sqlgen::translate_select_parameterized(&pattern, base_iri.as_deref());
         let params = trans.parameters.clone();
+        let cacheable = trans.cacheable;
         let entry = (
             trans.sql,
             trans.variables,
@@ -75,7 +76,8 @@ pub(crate) fn prepare_select_with_bindings(
             trans.raw_double_vars,
             trans.wcoj_preamble,
         );
-        if !canonical_query.to_ascii_uppercase().contains("SERVICE") {
+        // FORK-PLAN-CACHE-01: never cache a translation with an unresolved IRI (baked-in FALSE).
+        if cacheable && !canonical_query.to_ascii_uppercase().contains("SERVICE") {
             plan_cache::put_canonical(&canonical, entry.clone());
         }
         return (
@@ -152,6 +154,7 @@ pub(crate) fn prepare_select(
     check_query_complexity(&pattern);
 
     let trans = sqlgen::translate_select(&pattern, base_iri.as_deref());
+    let cacheable = trans.cacheable;
     let entry = (
         trans.sql,
         trans.variables,
@@ -164,7 +167,8 @@ pub(crate) fn prepare_select(
     // Skip plan cache for queries that contain SERVICE clauses — remote results
     // are baked into the generated SQL as VALUES literals; caching would return
     // stale data from a previous execution.
-    if !canonical.to_ascii_uppercase().contains("SERVICE") {
+    // FORK-PLAN-CACHE-01: never cache a translation with an unresolved IRI (baked-in FALSE).
+    if cacheable && !canonical.to_ascii_uppercase().contains("SERVICE") {
         plan_cache::put_canonical(&canonical, entry.clone());
     }
     entry
