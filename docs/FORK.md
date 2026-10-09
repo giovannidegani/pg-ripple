@@ -22,6 +22,7 @@ Ordered by priority for the coach KG spike (see also coach-kg `BLOCKERS.md` / `d
 | 3 | **Cross-graph SHACL** | `validate(graph)` is graph-local. Enum / class individuals typed only in the ontology graph cannot satisfy `sh:class` in a tenant graph. | Today we work around with `sh:nodeKind` + `sh:in` for enums. Want: optional import/union graphs or class lookup across configured graphs. |
 | 4 | **`load_shacl(graph IRI)`** | In 0.136.0 `load_shacl` takes Turtle **text**, not a graph IRI (some docs imply IRI). We dual-load shapes into a named graph *and* the catalog. | Want: `load_shacl` from an already-loaded named graph IRI so SPARQL and the catalog stay single-source. |
 | 5 | **File LOAD allowlist UX** | `*_file` loaders need `pg_ripple.copy_rdf_allowed_paths` **and** paths under PGDATA. Mounted `/kg/…` fails even with allowlist. GUC is `Sighup` (docs sometimes say `Suset`). | Want: clearer errors, documented allowlist+PGDATA contract, and/or safe load-from-bind-mount for local/dev. Coach-kg currently loads via client-side `cat` → `load_turtle_into_graph(text, …)`. |
+| 7 | **SHACL numeric ranges** | `sh:minInclusive/maxInclusive/minExclusive/maxExclusive` were parsed but never enforced: the bound literal was looked up as an IRI, missed, and the check was skipped. Coach-kg slot bounds (sets ≤ 20, load ≤ 1000 kg) were API-only. | **Fixed** (FORK-SHACL-RANGE-01), see below. |
 | 6 | **Write-time SHACL `minCount`** | Offline `validate()` checks `sh:minCount`; sync `insert_triple()` cannot see absence on a single insert. | Want: write-time / deferred checks that enforce required cardinality (batch flush, txn-end validate, or async mode with clear semantics). |
 
 ## FORK-ORDERBY-01: lexical / value ORDER BY
@@ -50,6 +51,28 @@ because they are invisible to the statement snapshot. Raw aggregate outputs (`CO
 query. Unbound values keep the previous placement (last for ASC, first for DESC).
 
 Regression test: `tests/pg_regress/sql/sparql_order_by_lexical.sql`.
+
+## FORK-SHACL-RANGE-01: numeric range constraints
+
+**Root cause (0.136.0):** `src/shacl/constraints/relational.rs` resolved the bound (`20`,
+`"1000.0"^^xsd:decimal`) with `dictionary::lookup_iri`, which never matches a literal, and returned
+early ("open world"), so every range constraint was silently skipped in `validate()`.
+
+**Fix:** numeric bounds (bare Turtle numbers or typed/plain numeric literals) are compared by value
+against each decoded value node (`numeric_value`); a non-numeric value against a numeric bound is a
+violation (SHACL Core §4.3: comparison not possible → violation). Non-numeric bounds (dates, strings)
+keep the previous dictionary comparison. Unit tests: `range_tests` in `relational.rs`; regression:
+`tests/pg_regress/sql/shacl_numeric_range.sql` (inclusive edges conform, exclusive edges, 99 sets,
+2000 kg, negative load and a string value are violations). `w3c_shacl_conformance` and
+`shacl_new_constraints` outputs unchanged.
+
+**Fast rebuild:** `docker/Dockerfile.overlay` compiles only pg_ripple and layers the new `.so` +
+extension SQL onto the previous fork image (other extensions unchanged):
+
+```bash
+sudo docker build -f docker/Dockerfile.overlay \
+  --build-arg BASE=ghcr.io/giovannidegani/pg-ripple:dev@sha256:<previous> -t oa-pg-ripple:dev .
+```
 
 ## How we build the image
 
