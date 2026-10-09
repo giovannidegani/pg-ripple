@@ -214,23 +214,47 @@ fn check_range(
 }
 
 /// Check `sh:minExclusive bound` — every value must be strictly greater than `bound`.
-pub(crate) fn check_min_exclusive(bound: &str, args: &ConstraintArgs, violations: &mut Vec<Violation>) {
-    check_range(bound, args, violations, "sh:minExclusive", ">", |o| o == Ordering::Greater);
+pub(crate) fn check_min_exclusive(
+    bound: &str,
+    args: &ConstraintArgs,
+    violations: &mut Vec<Violation>,
+) {
+    check_range(bound, args, violations, "sh:minExclusive", ">", |o| {
+        o == Ordering::Greater
+    });
 }
 
 /// Check `sh:maxExclusive bound` — every value must be strictly less than `bound`.
-pub(crate) fn check_max_exclusive(bound: &str, args: &ConstraintArgs, violations: &mut Vec<Violation>) {
-    check_range(bound, args, violations, "sh:maxExclusive", "<", |o| o == Ordering::Less);
+pub(crate) fn check_max_exclusive(
+    bound: &str,
+    args: &ConstraintArgs,
+    violations: &mut Vec<Violation>,
+) {
+    check_range(bound, args, violations, "sh:maxExclusive", "<", |o| {
+        o == Ordering::Less
+    });
 }
 
 /// Check `sh:minInclusive bound` — every value must be >= `bound`.
-pub(crate) fn check_min_inclusive(bound: &str, args: &ConstraintArgs, violations: &mut Vec<Violation>) {
-    check_range(bound, args, violations, "sh:minInclusive", ">=", |o| o != Ordering::Less);
+pub(crate) fn check_min_inclusive(
+    bound: &str,
+    args: &ConstraintArgs,
+    violations: &mut Vec<Violation>,
+) {
+    check_range(bound, args, violations, "sh:minInclusive", ">=", |o| {
+        o != Ordering::Less
+    });
 }
 
 /// Check `sh:maxInclusive bound` — every value must be <= `bound`.
-pub(crate) fn check_max_inclusive(bound: &str, args: &ConstraintArgs, violations: &mut Vec<Violation>) {
-    check_range(bound, args, violations, "sh:maxInclusive", "<=", |o| o != Ordering::Greater);
+pub(crate) fn check_max_inclusive(
+    bound: &str,
+    args: &ConstraintArgs,
+    violations: &mut Vec<Violation>,
+) {
+    check_range(bound, args, violations, "sh:maxInclusive", "<=", |o| {
+        o != Ordering::Greater
+    });
 }
 
 #[cfg(test)]
@@ -242,18 +266,30 @@ mod range_tests {
         assert_eq!(numeric_value("20"), Some(20.0));
         assert_eq!(numeric_value("-1.5"), Some(-1.5));
         assert_eq!(numeric_value("1e3"), Some(1000.0));
-        assert_eq!(numeric_value("\"100.0\"^^<http://www.w3.org/2001/XMLSchema#decimal>"), Some(100.0));
-        assert_eq!(numeric_value("\"99\"^^<http://www.w3.org/2001/XMLSchema#integer>"), Some(99.0));
+        assert_eq!(
+            numeric_value("\"100.0\"^^<http://www.w3.org/2001/XMLSchema#decimal>"),
+            Some(100.0)
+        );
+        assert_eq!(
+            numeric_value("\"99\"^^<http://www.w3.org/2001/XMLSchema#integer>"),
+            Some(99.0)
+        );
         assert_eq!(numeric_value("\"7\""), Some(7.0));
     }
 
     #[test]
     fn rejects_non_numbers() {
         assert_eq!(numeric_value("<http://ex/a>"), None);
-        assert_eq!(numeric_value("\"abc\"^^<http://www.w3.org/2001/XMLSchema#string>"), None);
+        assert_eq!(
+            numeric_value("\"abc\"^^<http://www.w3.org/2001/XMLSchema#string>"),
+            None
+        );
         assert_eq!(numeric_value("\"5\"@en"), None);
         assert_eq!(numeric_value("_:b0"), None);
         assert_eq!(numeric_value("NaN"), None);
-        assert_eq!(numeric_value("\"2026-10-09\"^^<http://www.w3.org/2001/XMLSchema#date>"), None);
+        assert_eq!(
+            numeric_value("\"2026-10-09\"^^<http://www.w3.org/2001/XMLSchema#date>"),
+            None
+        );
     }
 }
