@@ -109,6 +109,9 @@ off); the GUC is part of the plan-cache key. Regression: `tests/pg_regress/sql/s
 binds both when present, flat OPTIONAL keeps unlabelled subjects and uses LEFT JOIN; opt-in still
 promotes). `shacl_query_hints` and `shacl_sparql_hints` outputs unchanged.
 
+**Image (2026-10-09):** overlay on `dev@sha256:d2392acc…` → `ghcr.io/giovannidegani/pg-ripple:dev` and
+`:nested-opt-01`, digest `sha256:dc44f7ee7ee57c6aab976534de0a40e0672fdb42b864bfbb77587e01efe8cbf8` (main `01aa1fd5`).
+
 ## How we build the image
 
 Upstream publishes via `.github/workflows/release.yml` → `docker/build-push-action` on `Dockerfile` to `ghcr.io/trickle-labs/pg-ripple`. Local equivalent:
