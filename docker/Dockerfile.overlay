@@ -1,0 +1,27 @@
+# Fast fork rebuild: compile ONLY pg_ripple (pgrx, PG18) and layer the new extension files onto an
+# existing batteries-included fork image (pg_trickle / pg_tide / PostGIS / pgvector unchanged).
+#   docker build -f docker/Dockerfile.overlay --build-arg BASE=ghcr.io/giovannidegani/pg-ripple:dev@sha256:… -t … .
+# Use the full Dockerfile when Rust deps of the other extensions or the PG minor change.
+ARG BASE=ghcr.io/giovannidegani/pg-ripple:dev
+FROM rust:1-bookworm AS builder
+ARG PGRX_VERSION=0.18.0
+RUN apt-get update -qq \
+    && apt-get install -y --no-install-recommends gnupg curl ca-certificates \
+    && curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor -o /usr/share/keyrings/postgresql.gpg \
+    && echo "deb [signed-by=/usr/share/keyrings/postgresql.gpg] https://apt.postgresql.org/pub/repos/apt bookworm-pgdg main" > /etc/apt/sources.list.d/pgdg.list \
+    && apt-get update -qq \
+    && apt-get install -y --no-install-recommends build-essential pkg-config libssl-dev libclang-dev clang \
+       libreadline-dev libicu-dev bison flex postgresql-server-dev-18 \
+    && rm -rf /var/lib/apt/lists/*
+RUN cargo install cargo-pgrx --version "=${PGRX_VERSION}" --locked
+WORKDIR /build
+COPY Cargo.toml Cargo.lock build.rs pg_ripple.control .versions.toml ./
+COPY src/ ./src/
+COPY sql/ ./sql/
+COPY pg_ripple_http/ ./pg_ripple_http/
+RUN cargo pgrx init --pg18 /usr/lib/postgresql/18/bin/pg_config
+RUN cargo pgrx package --pg-config /usr/lib/postgresql/18/bin/pg_config --features pg18
+
+FROM ${BASE}
+COPY --from=builder /build/target/release/pg_ripple-pg18/usr/lib/postgresql/18/lib/pg_ripple.so /usr/lib/postgresql/18/lib/
+COPY --from=builder /build/target/release/pg_ripple-pg18/usr/share/postgresql/18/extension/ /usr/share/postgresql/18/extension/
