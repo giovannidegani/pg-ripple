@@ -1,7 +1,7 @@
-# giovannidegani/pg-ripple — Overachiever Coach KG fork
+# overachiever-eu/pg-ripple — Overachiever Coach KG fork
 
 **Upstream:** [trickle-labs/pg-ripple](https://github.com/trickle-labs/pg-ripple) (public, default branch `main`)  
-**This fork:** [giovannidegani/pg-ripple](https://github.com/giovannidegani/pg-ripple)  
+**This fork:** [overachiever-eu/pg-ripple](https://github.com/overachiever-eu/pg-ripple)  
 **Consumer:** Overachiever Coach KG (`/workspace/overachiever-coach-kg`) — parallel to the Overachiever app; never tied to the app DB.
 
 ## Policy: thin fork
@@ -9,7 +9,7 @@
 - Keep the fork **thin**: land only patches we need for the coach KG, with clear provenance and tests.
 - Improve **as the project goes** — do not wait for upstream, and do **not** depend on the upstream published image long-term.
 - Prefer small, reviewable commits; sync from `upstream/main` periodically; upstream PRs when a patch is generally useful.
-- Default image tags for our builds: `oa-pg-ripple:dev` (local) and, when GHCR push is configured, `ghcr.io/giovannidegani/pg-ripple:dev`.
+- Default image tags for our builds: `oa-pg-ripple:dev` (local) and, when GHCR push is configured, `ghcr.io/overachiever-eu/pg-ripple:dev`.
 
 ## Patch backlog (owned here)
 
@@ -85,11 +85,11 @@ extension SQL onto the previous fork image (other extensions unchanged):
 
 ```bash
 sudo docker build -f docker/Dockerfile.overlay \
-  --build-arg BASE=ghcr.io/giovannidegani/pg-ripple:dev@sha256:<previous> -t oa-pg-ripple:dev .
+  --build-arg BASE=ghcr.io/overachiever-eu/pg-ripple:dev@sha256:<previous> -t oa-pg-ripple:dev .
 ```
 
 **Image (2026-10-09):** overlay on `dev@sha256:96326a28…` →
-`ghcr.io/giovannidegani/pg-ripple:dev` and `:shacl-range-01`,
+`ghcr.io/overachiever-eu/pg-ripple:dev` and `:shacl-range-01`,
 digest `sha256:002df4644ffe3dd36043b5f8255ddcce6b8984d6d6a340f9b31785da7ea238f4` (main `f3deeaf1`).
 
 ## FORK-NESTED-OPT: OPTIONAL → INNER JOIN from SHACL hints is opt-in
@@ -109,7 +109,7 @@ off); the GUC is part of the plan-cache key. Regression: `tests/pg_regress/sql/s
 binds both when present, flat OPTIONAL keeps unlabelled subjects and uses LEFT JOIN; opt-in still
 promotes). `shacl_query_hints` and `shacl_sparql_hints` outputs unchanged.
 
-**Image (2026-10-09):** overlay on `dev@sha256:d2392acc…` → `ghcr.io/giovannidegani/pg-ripple:dev` and
+**Image (2026-10-09):** overlay on `dev@sha256:d2392acc…` → `ghcr.io/overachiever-eu/pg-ripple:dev` and
 `:nested-opt-01`, digest `sha256:dc44f7ee7ee57c6aab976534de0a40e0672fdb42b864bfbb77587e01efe8cbf8` (main `01aa1fd5`).
 
 ## How we build the image
@@ -120,9 +120,9 @@ Upstream publishes via `.github/workflows/release.yml` → `docker/build-push-ac
 # From repo root (multi-stage: Rust/pgrx pg_ripple + pg_trickle + pg_tide + PostGIS + pgvector → postgres:18-bookworm)
 docker build -t oa-pg-ripple:dev .
 # optional GHCR tag / push (needs packages:write + docker login ghcr.io)
-docker tag oa-pg-ripple:dev ghcr.io/giovannidegani/pg-ripple:dev
+docker tag oa-pg-ripple:dev ghcr.io/overachiever-eu/pg-ripple:dev
 echo "$GHCR_TOKEN" | docker login ghcr.io -u giovannidegani --password-stdin
-docker push ghcr.io/giovannidegani/pg-ripple:dev
+docker push ghcr.io/overachiever-eu/pg-ripple:dev
 ```
 
 Also: `just docker-build tag=dev` → `docker build -t pg-ripple:dev .`
@@ -131,7 +131,7 @@ Also: `just docker-build tag=dev` → `docker build -t pg-ripple:dev .`
 
 ## Coach KG compose
 
-`overachiever-coach-kg/docker-compose.yml` defaults to `ghcr.io/giovannidegani/pg-ripple:dev` pinned by digest (fork image with ORDER BY fix). Upstream `0.136.0` remains documented as an alternative.
+`overachiever-coach-kg/docker-compose.yml` defaults to `ghcr.io/overachiever-eu/pg-ripple:dev` pinned by digest (fork image with ORDER BY fix). Upstream `0.136.0` remains documented as an alternative.
 
 ## Sync
 
@@ -148,15 +148,15 @@ Full batteries-included rebuild + GHCR push (after disk prune + apt retry):
 
 ```text
 oa-pg-ripple:dev                       sha256:4ef618cf85d2…
-ghcr.io/giovannidegani/pg-ripple:dev   same id
+ghcr.io/overachiever-eu/pg-ripple:dev   same id
 GHCR digest: sha256:806dbbe29cbb3d7542cf93bb09edf76f42bc76299560f14190174418e97c62f5
 ```
 
 ```bash
 cd /workspace/pg-ripple   # on main
 echo "$GHCR_TOKEN" | sudo docker login ghcr.io -u giovannidegani --password-stdin
-sudo docker build -t oa-pg-ripple:dev -t ghcr.io/giovannidegani/pg-ripple:dev .
-sudo docker push ghcr.io/giovannidegani/pg-ripple:dev
+sudo docker build -t oa-pg-ripple:dev -t ghcr.io/overachiever-eu/pg-ripple:dev .
+sudo docker push ghcr.io/overachiever-eu/pg-ripple:dev
 ```
 
 Coach KG compose pins that digest. Verified: ontology class labels

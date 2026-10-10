@@ -9,16 +9,6 @@ CREATE EXTENSION IF NOT EXISTS pg_ripple;
 SELECT pg_ripple.triple_count() >= 0 AS library_loaded;
 SET search_path TO pg_ripple, public;
 
--- Helper must exist (installed by CREATE EXTENSION, or repaired by SUM path).
-SELECT EXISTS (
-    SELECT 1
-    FROM pg_proc p
-    JOIN pg_namespace n ON n.oid = p.pronamespace
-    WHERE n.nspname = 'pg_ripple'
-      AND p.proname = 'numeric_type_code_spi'
-      AND pg_catalog.pg_get_function_identity_arguments(p.oid) = 'bigint'
-) AS numeric_type_code_spi_present;
-
 -- Inline integers via VALUES.
 SELECT (result->>'s') AS sum_ints
 FROM pg_ripple.sparql($$
@@ -29,6 +19,9 @@ SELECT (result->>'a') AS avg_ints
 FROM pg_ripple.sparql($$
     SELECT (AVG(?x) AS ?a) WHERE { VALUES ?x { 1 2 3 } }
 $$);
+
+-- Helper must exist after the first SUM/AVG (installed by CREATE EXTENSION or repaired by the SUM path).
+SELECT to_regprocedure('pg_ripple.numeric_type_code_spi(bigint)') IS NOT NULL AS numeric_type_code_spi_present;
 
 -- Dictionary-backed decimals (coach-kg todayMacros shape).
 SELECT pg_ripple.load_ntriples(

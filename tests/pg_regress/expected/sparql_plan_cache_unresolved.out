@@ -4,6 +4,7 @@
 CREATE EXTENSION IF NOT EXISTS pg_ripple;
 SELECT count(*) AS before_rows FROM pg_ripple.sparql(
   'SELECT ?o WHERE { GRAPH <https://plancache.test/g-fresh> { <https://plancache.test/s-fresh> <https://plancache.test/p-fresh> ?o } }');
+WARNING:  pg_ripple: loaded without shared_preload_libraries; HTAP merge worker, CONSTRUCT writeback, and dictionary cache are disabled. Add pg_ripple to shared_preload_libraries in postgresql.conf.
  before_rows 
 -------------
            0

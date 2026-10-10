@@ -8,6 +8,7 @@ SELECT pg_ripple.load_shacl('
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
 <https://nopt.test/ThingShape> a sh:NodeShape ; sh:targetClass <https://nopt.test/Thing> ;
   sh:property [ sh:path rdfs:label ; sh:minCount 1 ] .') >= 0 AS shape_loaded;
+WARNING:  pg_ripple: loaded without shared_preload_libraries; HTAP merge worker, CONSTRUCT writeback, and dictionary cache are disabled. Add pg_ripple to shared_preload_libraries in postgresql.conf.
  shape_loaded 
 --------------
  t
