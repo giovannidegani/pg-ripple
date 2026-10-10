@@ -1,8 +1,8 @@
 # Fast fork rebuild: compile ONLY pg_ripple (pgrx, PG18) and layer the new extension files onto an
 # existing batteries-included fork image (pg_trickle / pg_tide / PostGIS / pgvector unchanged).
-#   docker build -f docker/Dockerfile.overlay --build-arg BASE=ghcr.io/giovannidegani/pg-ripple:dev@sha256:… -t … .
+#   docker build -f docker/Dockerfile.overlay --build-arg BASE=ghcr.io/overachiever-eu/pg-ripple:dev@sha256:… -t … .
 # Use the full Dockerfile when Rust deps of the other extensions or the PG minor change.
-ARG BASE=ghcr.io/giovannidegani/pg-ripple:dev
+ARG BASE=ghcr.io/overachiever-eu/pg-ripple:dev
 FROM rust:1-bookworm AS builder
 ARG PGRX_VERSION=0.18.0
 RUN apt-get update -qq \
