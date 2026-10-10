@@ -21,14 +21,7 @@ FROM pg_ripple.sparql($$
 $$);
 
 -- Helper must exist after the first SUM/AVG (installed by CREATE EXTENSION or repaired by the SUM path).
-SELECT EXISTS (
-    SELECT 1
-    FROM pg_proc p
-    JOIN pg_namespace n ON n.oid = p.pronamespace
-    WHERE n.nspname = 'pg_ripple'
-      AND p.proname = 'numeric_type_code_spi'
-      AND pg_catalog.pg_get_function_identity_arguments(p.oid) = 'bigint'
-) AS numeric_type_code_spi_present;
+SELECT to_regprocedure('pg_ripple.numeric_type_code_spi(bigint)') IS NOT NULL AS numeric_type_code_spi_present;
 
 -- Dictionary-backed decimals (coach-kg todayMacros shape).
 SELECT pg_ripple.load_ntriples(
